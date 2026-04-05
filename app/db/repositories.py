@@ -142,10 +142,18 @@ class MemoryRepository:
         return entry
 
     async def search(self, query: str, limit: int = 10) -> Sequence[MemoryEntry]:
-        """Simple keyword search across memory entries."""
+        """Keyword search across memory entries. Splits query into words and
+        matches entries containing ANY of the keywords (OR logic)."""
+        from sqlalchemy import or_
+
+        keywords = [w.strip() for w in query.split() if len(w.strip()) >= 3]
+        if not keywords:
+            keywords = [query]
+
+        conditions = [MemoryEntry.content.ilike(f"%{kw}%") for kw in keywords]
         result = await self.session.execute(
             select(MemoryEntry)
-            .where(MemoryEntry.content.ilike(f"%{query}%"))
+            .where(or_(*conditions))
             .order_by(MemoryEntry.created_at.desc())
             .limit(limit)
         )

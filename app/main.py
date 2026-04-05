@@ -85,6 +85,12 @@ async def on_startup() -> None:
     import app.tools.weather_tool     # noqa: F401
     logger.info("Tools registered.")
 
+    # Seed knowledge base with warehouse inventory and route data
+    from app.db.seed import seed_knowledge_base
+    seeded = await seed_knowledge_base()
+    if seeded:
+        logger.info(f"Knowledge base seeded with {seeded} entries.")
+
     logger.info(
         f"TaskForge ready | model={settings.gemini_model} | "
         f"vertex_ai={settings.use_vertex_ai}"

@@ -39,15 +39,19 @@ async def knowledge_lookup(
     async with async_session_factory() as session:
         repo = MemoryRepository(session)
 
+        entries = []
         if task_id:
             try:
                 tid = uuid.UUID(task_id)
-                entries = await repo.get_by_task(tid, limit=limit)
+                entries = list(await repo.get_by_task(tid, limit=limit))
             except ValueError:
-                logger.warning(f"Invalid task_id UUID: {task_id}, falling back to global search")
-                entries = await repo.search(query, limit=limit)
-        else:
-            entries = await repo.search(query, limit=limit)
+                pass
+
+        # Always supplement with global search if task-scoped results are thin
+        if len(entries) < limit:
+            global_entries = await repo.search(query, limit=limit - len(entries))
+            seen_ids = {e.id for e in entries}
+            entries.extend(e for e in global_entries if e.id not in seen_ids)
 
         results = [
             {
