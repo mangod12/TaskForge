@@ -1,0 +1,66 @@
+name: CD — Deploy to Cloud Run
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    needs: []
+    permissions:
+      contents: read
+      id-token: write
+
+    env:
+      PROJECT_ID: apac-2026-taskforge
+      REGION: asia-south1
+      SERVICE: taskforge
+      IMAGE: asia-south1-docker.pkg.dev/apac-2026-taskforge/taskforge/taskforge
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - id: auth
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      - uses: google-github-actions/setup-gcloud@v2
+        with:
+          project_id: ${{ env.PROJECT_ID }}
+
+      - name: Build image
+        run: |
+          gcloud builds submit \
+            --tag ${{ env.IMAGE }}:${{ github.sha }} \
+            --tag ${{ env.IMAGE }}:latest \
+            --project ${{ env.PROJECT_ID }}
+
+      - name: Deploy to Cloud Run
+        run: |
+          gcloud run deploy ${{ env.SERVICE }} \
+            --image ${{ env.IMAGE }}:${{ github.sha }} \
+            --region ${{ env.REGION }} \
+            --platform managed \
+            --allow-unauthenticated \
+            --add-cloudsql-instances=${{ env.PROJECT_ID }}:${{ env.REGION }}:taskforge-db \
+            --set-env-vars="DATABASE_URL=postgresql+asyncpg://postgres:taskforge2026@/taskforge?host=/cloudsql/${{ env.PROJECT_ID }}:${{ env.REGION }}:taskforge-db" \
+            --set-env-vars="VERTEX_AI_PROJECT=${{ env.PROJECT_ID }}" \
+            --set-env-vars="VERTEX_AI_LOCATION=${{ env.REGION }}" \
+            --set-env-vars="GEMINI_MODEL=gemini-2.0-flash" \
+            --set-env-vars="LOG_LEVEL=INFO" \
+            --memory=1Gi \
+            --timeout=300 \
+            --min-instances=0 \
+            --max-instances=3 \
+            --project ${{ env.PROJECT_ID }}
+
+      - name: Verify deployment
+        run: |
+          URL=$(gcloud run services describe ${{ env.SERVICE }} \
+            --region ${{ env.REGION }} \
+            --project ${{ env.PROJECT_ID }} \
+            --format='value(status.url)')
+          echo "Deployed to: $URL"
+          curl -sf "$URL/health" | python3 -c "import sys,json; d=json.load(sys.stdin); assert d['status']=='healthy', f'Unhealthy: {d}'; print('Health check passed')"

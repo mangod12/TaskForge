@@ -9,3 +9,7 @@ dist/
 build/
 .venv/
 venv/
+implementation_plan.md
+memory.md
+primer.md
+rules.md

@@ -6,17 +6,24 @@ TaskForge is a production-grade multi-agent system that coordinates supply chain
 
 Built with FastAPI, PostgreSQL, and Gemini 2.0 Flash. Deployed on Google Cloud Run.
 
+**Live**: https://taskforge-888893197774.asia-south1.run.app
+
+[![CI — Lint & Test](https://github.com/mangod12/google_apac_2026/actions/workflows/ci.yml/badge.svg)](https://github.com/mangod12/google_apac_2026/actions/workflows/ci.yml)
+[![CD — Deploy to Cloud Run](https://github.com/mangod12/google_apac_2026/actions/workflows/deploy.yml/badge.svg)](https://github.com/mangod12/google_apac_2026/actions/workflows/deploy.yml)
+
 ---
 
 ## Live Demo
 
+**Dashboard**: https://taskforge-888893197774.asia-south1.run.app
+
+6 preset scenarios available on the dashboard — click any chip to run instantly.
+
 ```bash
-curl -X POST http://localhost:8000/execute \
+curl -X POST https://taskforge-888893197774.asia-south1.run.app/execute \
   -H "Content-Type: application/json" \
   -d '{"query": "Flood in Odisha causing food shortage across 3 districts"}'
 ```
-
-Open `http://localhost:8000` for the interactive dashboard.
 
 ---
 
@@ -225,6 +232,31 @@ gcloud run deploy taskforge \
   --set-env-vars="GEMINI_MODEL=gemini-2.0-flash" \
   --memory=1Gi --timeout=300 --min-instances=0 --max-instances=3
 ```
+
+---
+
+## CI/CD Pipeline
+
+Two GitHub Actions workflows run automatically:
+
+**CI — Lint & Test** (on every push and PR to `main`):
+- Spins up PostgreSQL 16 service container
+- Installs dependencies
+- Runs all 34 E2E tests against real PostgreSQL
+
+**CD — Deploy to Cloud Run** (on push to `main`):
+- Authenticates with GCP via service account
+- Builds Docker image via Cloud Build
+- Deploys to Cloud Run with Cloud SQL connection
+- Runs a health check to verify the deployment
+
+```
+.github/workflows/
+  ci.yml      # Test pipeline — PostgreSQL + pytest
+  deploy.yml  # Build + deploy to Cloud Run
+```
+
+To enable CD, add a `GCP_SA_KEY` secret in GitHub repo settings containing the service account JSON key with Cloud Run Admin, Cloud Build Editor, Cloud SQL Client, and Artifact Registry Writer roles.
 
 ---
 
