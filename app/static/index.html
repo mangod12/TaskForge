@@ -132,6 +132,18 @@
 
   .error-msg { background: #ef444420; border: 1px solid var(--red); color: var(--red); padding: 1rem; border-radius: .5rem; margin-bottom: 1rem; }
 
+  .progress-panel { background: var(--card); border: 1px solid var(--border); border-radius: .5rem; padding: 1.25rem; margin-bottom: 1.5rem; }
+  .progress-title { font-size: .85rem; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; margin-bottom: .75rem; }
+  .progress-step { display: flex; align-items: center; gap: .75rem; padding: .45rem 0; font-size: .88rem; }
+  .progress-icon { width: 20px; text-align: center; flex-shrink: 0; }
+  .progress-icon.waiting { color: var(--muted); }
+  .progress-icon.active { color: var(--accent); animation: pulse 1s infinite; }
+  .progress-icon.done { color: var(--green); }
+  .progress-label { color: var(--muted); }
+  .progress-label.active { color: var(--text); font-weight: 600; }
+  .progress-label.done { color: var(--green); }
+  @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: .4; } }
+
   .scenarios { margin-bottom: 1.5rem; }
   .scenarios-label { font-size: .75rem; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin-bottom: .5rem; font-weight: 600; }
   .scenario-chips { display: flex; flex-wrap: wrap; gap: .5rem; }
@@ -166,6 +178,12 @@
   </div>
 
   <div id="error"></div>
+  <div id="progress" style="display:none">
+    <div class="progress-panel">
+      <div class="progress-title">Agent Pipeline Running</div>
+      <div id="progressSteps"></div>
+    </div>
+  </div>
   <div id="results">
 
     <!-- Summary -->
@@ -251,6 +269,31 @@
 </div>
 
 <script>
+const AGENTS = [
+  { name: 'ResourceAgent', label: 'Auditing inventory and weather data' },
+  { name: 'PlanningAgent', label: 'Generating dispatch strategy' },
+  { name: 'ExecutionAgent', label: 'Creating tasks and scheduling deliveries' },
+  { name: 'ReplanningAgent', label: 'Checking for route disruptions' },
+];
+
+function showProgress(activeIdx) {
+  const el = document.getElementById('progress');
+  const steps = document.getElementById('progressSteps');
+  el.style.display = '';
+  steps.innerHTML = AGENTS.map((a, i) => {
+    let cls = 'waiting', icon = '\u25CB';
+    if (i < activeIdx) { cls = 'done'; icon = '\u2714'; }
+    else if (i === activeIdx) { cls = 'active'; icon = '\u25CF'; }
+    return '<div class="progress-step">' +
+      '<span class="progress-icon ' + cls + '">' + icon + '</span>' +
+      '<span class="progress-label ' + cls + '">' + a.name + ' \u2014 ' + a.label + '</span></div>';
+  }).join('');
+}
+
+function hideProgress() {
+  document.getElementById('progress').style.display = 'none';
+}
+
 async function runSimulation() {
   const query = document.getElementById('query').value.trim();
   if (!query) return;
@@ -261,18 +304,36 @@ async function runSimulation() {
   btn.innerHTML = '<span class="spinner"></span>Agents working...';
   errEl.innerHTML = '';
   results.style.display = 'none';
+
+  // Show progress animation
+  showProgress(0);
+  let progressTimer = null;
+  const t0 = performance.now();
+
+  // Simulate agent steps while waiting (advance every ~8s for live, skip for cached)
+  let step = 0;
+  progressTimer = setInterval(() => {
+    step = Math.min(step + 1, AGENTS.length - 1);
+    showProgress(step);
+  }, 8000);
+
   try {
-    const t0 = performance.now();
     const resp = await fetch('/execute', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ query })
     });
     if (!resp.ok) { const t = await resp.text(); throw new Error(resp.status + ': ' + t.slice(0, 200)); }
+    clearInterval(progressTimer);
+    showProgress(AGENTS.length); // All done
     const fetchElapsed = (performance.now() - t0) / 1000;
     document.getElementById('execTime').dataset.elapsed = fetchElapsed.toFixed(1);
+    await new Promise(r => setTimeout(r, 400)); // Brief pause to show all-green
+    hideProgress();
     render(await resp.json());
     results.style.display = 'block';
   } catch (e) {
+    clearInterval(progressTimer);
+    hideProgress();
     errEl.innerHTML = '<div class="error-msg">Error: ' + e.message + '</div>';
   } finally {
     btn.disabled = false;

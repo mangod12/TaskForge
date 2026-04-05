@@ -325,6 +325,7 @@ async def _warmup_presets(queries: list[str]) -> None:
             logger.error(f"[warmup] failed for '{q[:60]}': {e}")
 
 
+
 @router.get(
     "",
     response_model=TaskListResponse,

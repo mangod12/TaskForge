@@ -66,7 +66,8 @@ STYLE RULES:
 - delivery descriptions must include origin → destination → route
 - summary: "4 trucks dispatched via NH-16, ETA 2hrs to Puri distribution center"
 - Never use "initiated", "leveraging", "coordinated"
-- Minimum 3 tasks, minimum 2 deliveries
+- Minimum 3 tasks, minimum 1 delivery
+- IMPORTANT: batch all tool calls in as few rounds as possible — call multiple tools at once
 """
 
 
@@ -74,6 +75,10 @@ class ExecutionAgent(BaseAgent):
     name = "execution"
     system_prompt = _SYSTEM_PROMPT
     available_tools = ["create_subtask", "schedule_delivery", "update_task_status"]
+
+    def __init__(self):
+        super().__init__()
+        self.max_iterations = 4  # Cap at 4 — enough for 3 subtasks + 1 delivery batch
 
     async def run(
         self,
