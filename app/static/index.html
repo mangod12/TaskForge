@@ -1,0 +1,386 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TaskForge — Crisis AI</title>
+<style>
+  :root { --bg: #0f172a; --card: #1e293b; --border: #334155; --accent: #3b82f6; --green: #22c55e; --yellow: #eab308; --red: #ef4444; --orange: #f97316; --text: #e2e8f0; --muted: #94a3b8; }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: 'Segoe UI', system-ui, -apple-system, sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; }
+  .container { max-width: 1100px; margin: 0 auto; padding: 2rem 1.5rem; }
+
+  header { text-align: center; margin-bottom: 2rem; }
+  header h1 { font-size: 1.8rem; font-weight: 700; }
+  header h1 span { color: var(--accent); }
+  .subtitle { color: var(--muted); font-size: .85rem; margin-top: .3rem; }
+  .status-badge { display: inline-block; margin-top: .5rem; padding: .25rem .75rem; border-radius: 999px; font-size: .8rem; font-weight: 600; background: #16a34a22; color: var(--green); border: 1px solid #16a34a55; }
+
+  .input-section { display: flex; gap: .75rem; margin-bottom: 2rem; }
+  textarea { flex: 1; background: var(--card); border: 1px solid var(--border); color: var(--text); border-radius: .5rem; padding: .75rem 1rem; font-size: .95rem; resize: none; font-family: inherit; height: 56px; }
+  textarea:focus { outline: none; border-color: var(--accent); }
+  button { background: var(--accent); color: white; border: none; border-radius: .5rem; padding: .75rem 1.5rem; font-size: .95rem; font-weight: 600; cursor: pointer; white-space: nowrap; }
+  button:hover { background: #2563eb; }
+  button:disabled { opacity: .5; cursor: not-allowed; }
+  .spinner { display: inline-block; width: 18px; height: 18px; border: 2.5px solid #fff4; border-top-color: #fff; border-radius: 50%; animation: spin .7s linear infinite; vertical-align: middle; margin-right: .5rem; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  #results { display: none; }
+
+  /* Summary bar */
+  .summary-bar { background: var(--card); border: 1px solid var(--border); border-radius: .5rem; padding: 1.25rem; margin-bottom: 1.25rem; }
+  .summary-text { font-size: 1.05rem; font-weight: 600; margin-bottom: .75rem; line-height: 1.4; }
+  .meta-row { display: flex; align-items: center; gap: 1rem; flex-wrap: wrap; }
+  .conf-bar { flex: 1; min-width: 120px; height: 8px; background: var(--border); border-radius: 4px; overflow: hidden; }
+  .conf-fill { height: 100%; border-radius: 4px; transition: width .5s; }
+  .meta-label { font-size: .85rem; font-weight: 600; white-space: nowrap; }
+
+  /* Crisis Context */
+  .crisis-card { display: grid; grid-template-columns: repeat(5, 1fr); gap: .5rem; background: var(--card); border: 1px solid var(--border); border-radius: .5rem; padding: 1rem 1.25rem; margin-bottom: 1.25rem; }
+  @media (max-width: 700px) { .crisis-card { grid-template-columns: repeat(2, 1fr); } }
+  .crisis-item { text-align: center; }
+  .crisis-label { font-size: .7rem; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin-bottom: .25rem; }
+  .crisis-value { font-size: .95rem; font-weight: 700; }
+  .crisis-value.sev-critical { color: var(--red); }
+  .crisis-value.sev-high { color: var(--orange); }
+  .crisis-value.sev-moderate { color: var(--yellow); }
+  .crisis-value.sev-low { color: var(--green); }
+
+  /* Section */
+  .section { margin-bottom: 1.25rem; }
+  .section-title { font-size: .85rem; font-weight: 700; margin-bottom: .6rem; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); }
+
+  /* Agent Flow */
+  .flow-step { display: flex; align-items: flex-start; gap: .75rem; padding: .55rem .85rem; margin-bottom: .35rem; border-radius: .4rem; font-size: .88rem; border-left: 3px solid var(--accent); background: var(--card); }
+  .flow-step.critical { border-left-color: var(--red); background: #ef444412; }
+  .flow-step.replan { border-left-color: var(--yellow); background: #eab30812; }
+  .step-num { font-weight: 700; color: var(--muted); min-width: 1.5rem; }
+
+  /* Themed cards */
+  .themed-card { border-radius: .5rem; padding: 1rem 1.25rem; margin-bottom: 1.25rem; }
+  .themed-card h3 { font-size: .85rem; font-weight: 700; margin-bottom: .5rem; text-transform: uppercase; letter-spacing: .04em; }
+  .themed-card .item { font-size: .88rem; padding: .25rem 0; display: flex; gap: .5rem; align-items: flex-start; }
+  .themed-card .bullet { font-weight: 700; flex-shrink: 0; }
+
+  .card-insights { background: #3b82f60d; border: 1px solid #3b82f633; }
+  .card-insights h3 { color: var(--accent); }
+  .card-insights .bullet { color: var(--accent); }
+
+  .card-risks { background: #eab3080d; border: 1px solid #eab30833; }
+  .card-risks h3 { color: var(--yellow); }
+  .card-risks .bullet { color: var(--yellow); }
+
+  .card-decision { background: #8b5cf60d; border: 1px solid #8b5cf633; }
+  .card-decision h3 { color: #a78bfa; }
+  .dc-text { font-size: .88rem; white-space: pre-line; line-height: 1.6; font-family: 'Segoe UI Mono', 'Consolas', monospace; }
+
+  .card-state { background: #06b6d40d; border: 1px solid #06b6d433; }
+  .card-state h3 { color: #22d3ee; }
+  .state-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: .5rem; }
+  @media (max-width: 600px) { .state-grid { grid-template-columns: repeat(2, 1fr); } }
+  .state-item { text-align: center; }
+  .state-val { font-size: 1.1rem; font-weight: 700; }
+  .state-lbl { font-size: .7rem; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); }
+
+  .card-reliability { background: #22c55e0d; border: 1px solid #22c55e33; }
+  .card-reliability h3 { color: var(--green); }
+  .rel-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: .5rem; }
+  @media (max-width: 600px) { .rel-grid { grid-template-columns: repeat(2, 1fr); } }
+  .rel-item { text-align: center; }
+  .rel-val { font-size: .95rem; font-weight: 700; color: var(--green); }
+  .rel-lbl { font-size: .7rem; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); }
+
+  .outcome-bar { background: linear-gradient(135deg, #3b82f615, #22c55e15); border: 1px solid #3b82f644; border-radius: .5rem; padding: 1rem 1.25rem; margin-top: 1.25rem; text-align: center; }
+  .outcome-text { font-size: 1.05rem; font-weight: 700; color: var(--text); letter-spacing: .01em; }
+
+  .card-impact { background: #ef44440d; border: 1px solid #ef444433; }
+  .card-impact h3 { color: var(--red); }
+  .impact-row { display: flex; gap: .5rem; font-size: .88rem; padding: .2rem 0; }
+  .impact-label { font-weight: 600; color: var(--muted); min-width: 5rem; }
+
+  /* Grid */
+  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+  @media (max-width: 700px) { .grid { grid-template-columns: 1fr; } }
+  .card { background: var(--card); border: 1px solid var(--border); border-radius: .5rem; padding: 1rem 1.25rem; }
+  .card h3 { font-size: .85rem; font-weight: 700; margin-bottom: .5rem; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
+
+  .plan-text { font-size: .88rem; line-height: 1.5; }
+
+  .task-item { display: flex; align-items: center; gap: .5rem; padding: .3rem 0; font-size: .86rem; border-bottom: 1px solid var(--border); }
+  .task-item:last-child { border-bottom: none; }
+  .priority-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+  .priority-dot.critical { background: var(--red); }
+  .priority-dot.high { background: var(--orange); }
+  .priority-dot.medium { background: var(--yellow); }
+  .priority-dot.low { background: var(--green); }
+
+  .sched-item { display: flex; gap: .75rem; padding: .3rem 0; font-size: .86rem; border-bottom: 1px solid var(--border); }
+  .sched-item:last-child { border-bottom: none; }
+  .sched-day { font-weight: 700; color: var(--accent); min-width: 7rem; white-space: nowrap; }
+
+  .replan-box { background: #ef44440f; border: 1px solid #ef444444; border-radius: .4rem; padding: .75rem 1rem; }
+  .replan-reason { font-weight: 600; color: var(--red); margin-bottom: .4rem; font-size: .86rem; }
+  .replan-change { font-size: .84rem; padding: .15rem 0; }
+  .no-replan { color: var(--green); font-size: .86rem; }
+
+  .error-msg { background: #ef444420; border: 1px solid var(--red); color: var(--red); padding: 1rem; border-radius: .5rem; margin-bottom: 1rem; }
+</style>
+</head>
+<body>
+<div class="container">
+  <header>
+    <h1>&#x1F6A8; <span>TaskForge</span> — Crisis AI Coordination</h1>
+    <div class="subtitle">AI-powered crisis logistics coordination system</div>
+    <div class="status-badge">&#x25CF; System Active</div>
+  </header>
+
+  <div class="input-section">
+    <textarea id="query" placeholder="Describe the crisis scenario, e.g. Flood in Odisha causing food shortage across 3 districts"></textarea>
+    <button id="runBtn" onclick="runSimulation()">Run Simulation</button>
+  </div>
+
+  <div id="error"></div>
+  <div id="results">
+
+    <!-- Summary -->
+    <div class="summary-bar">
+      <div class="summary-text" id="summary"></div>
+      <div class="meta-row">
+        <div class="conf-bar"><div class="conf-fill" id="confFill"></div></div>
+        <div class="meta-label" id="confLabel"></div>
+        <div class="meta-label" id="execTime" style="color:var(--muted)"></div>
+      </div>
+    </div>
+
+    <!-- Crisis Context -->
+    <div class="crisis-card" id="crisisCard" style="display:none">
+      <div class="crisis-item"><div class="crisis-label">Location</div><div class="crisis-value" id="ccLocation"></div></div>
+      <div class="crisis-item"><div class="crisis-label">Crisis Type</div><div class="crisis-value" id="ccType"></div></div>
+      <div class="crisis-item"><div class="crisis-label">Resource</div><div class="crisis-value" id="ccResource"></div></div>
+      <div class="crisis-item"><div class="crisis-label">Shortage</div><div class="crisis-value" id="ccShortage"></div></div>
+      <div class="crisis-item"><div class="crisis-label">Severity</div><div class="crisis-value" id="ccSeverity"></div></div>
+    </div>
+
+    <!-- System Reliability -->
+    <div class="themed-card card-reliability" id="relCard" style="display:none">
+      <h3>&#x1F6E1; System Reliability</h3>
+      <div class="rel-grid" id="relGrid"></div>
+    </div>
+
+    <!-- System State -->
+    <div class="themed-card card-state" id="stateCard" style="display:none">
+      <h3>&#x1F9E0; System State</h3>
+      <div class="state-grid" id="stateGrid"></div>
+    </div>
+
+    <!-- Agent Flow -->
+    <div class="section">
+      <div class="section-title">Agent Flow</div>
+      <div id="agentFlow"></div>
+    </div>
+
+    <!-- Insights -->
+    <div class="themed-card card-insights" id="insightsCard" style="display:none">
+      <h3>&#x1F9E0; Operational Insights</h3>
+      <div id="insightsList"></div>
+    </div>
+
+    <!-- Decision Comparison -->
+    <div class="themed-card card-decision" id="dcCard" style="display:none">
+      <h3>&#x2696;&#xFE0F; Decision Comparison</h3>
+      <div id="dcBody"></div>
+    </div>
+
+    <!-- Risk Notes -->
+    <div class="themed-card card-risks" id="riskNotesCard" style="display:none">
+      <h3>&#x26A0;&#xFE0F; Operational Risks</h3>
+      <div id="riskNotesList"></div>
+    </div>
+
+    <!-- Impact Analysis -->
+    <div class="themed-card card-impact" id="impactCard" style="display:none">
+      <h3>&#x1F6A8; Without TaskForge</h3>
+      <div id="impactBody"></div>
+    </div>
+
+    <!-- Grid -->
+    <div class="grid">
+      <div class="card"><h3>Plan</h3><div class="plan-text" id="plan"></div></div>
+      <div class="card"><h3>Schedule</h3><div id="schedule"></div></div>
+      <div class="card"><h3>Tasks</h3><div id="tasks"></div></div>
+      <div class="card"><h3>Replanning</h3><div id="replanning"></div></div>
+    </div>
+
+    <!-- Outcome -->
+    <div class="outcome-bar" id="outcomeBar" style="display:none">
+      <div class="outcome-text" id="outcomeText"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+async function runSimulation() {
+  const query = document.getElementById('query').value.trim();
+  if (!query) return;
+  const btn = document.getElementById('runBtn');
+  const errEl = document.getElementById('error');
+  const results = document.getElementById('results');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner"></span>Agents working...';
+  errEl.innerHTML = '';
+  results.style.display = 'none';
+  try {
+    const resp = await fetch('/execute', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ query })
+    });
+    if (!resp.ok) { const t = await resp.text(); throw new Error(resp.status + ': ' + t.slice(0, 200)); }
+    render(await resp.json());
+    results.style.display = 'block';
+  } catch (e) {
+    errEl.innerHTML = '<div class="error-msg">Error: ' + e.message + '</div>';
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Run Simulation';
+  }
+}
+
+function render(d) {
+  // Summary + meta
+  document.getElementById('summary').textContent = d.summary || '';
+  const conf = d.confidence_score || 0;
+  const pct = Math.round(conf * 100);
+  const fill = document.getElementById('confFill');
+  fill.style.width = pct + '%';
+  fill.style.background = conf >= .85 ? 'var(--green)' : conf >= .7 ? 'var(--yellow)' : 'var(--red)';
+  const cl = document.getElementById('confLabel');
+  cl.textContent = 'Confidence: ' + pct + '%';
+  cl.style.color = fill.style.background;
+  const et = d.execution_time || '';
+  document.getElementById('execTime').innerHTML = et ? '\u26A1 ' + et : '';
+
+  // Crisis context
+  const cc = d.crisis_context;
+  const ccCard = document.getElementById('crisisCard');
+  if (cc) {
+    ccCard.style.display = '';
+    document.getElementById('ccLocation').textContent = cc.location || '\u2014';
+    document.getElementById('ccType').textContent = cc.type || '\u2014';
+    document.getElementById('ccResource').textContent = cc.resource || '\u2014';
+    document.getElementById('ccShortage').textContent = cc.shortage || '\u2014';
+    const sv = document.getElementById('ccSeverity');
+    sv.textContent = cc.severity || '\u2014';
+    sv.className = 'crisis-value sev-' + (cc.severity || '').toLowerCase();
+  } else { ccCard.style.display = 'none'; }
+
+  // System reliability
+  const sr = d.system_reliability;
+  const relCard = document.getElementById('relCard');
+  if (sr) {
+    relCard.style.display = '';
+    document.getElementById('relGrid').innerHTML =
+      '<div class="rel-item"><div class="rel-val">\u2714 ' + sr.tests_passed + '</div><div class="rel-lbl">Tests</div></div>' +
+      '<div class="rel-item"><div class="rel-val">\u2714 ' + (sr.pipeline_validated ? 'Validated' : '\u2014') + '</div><div class="rel-lbl">Pipeline</div></div>' +
+      '<div class="rel-item"><div class="rel-val">\u2714 ' + sr.data_consistency + '</div><div class="rel-lbl">Data</div></div>' +
+      '<div class="rel-item"><div class="rel-val">\u2714 ' + sr.execution_mode + '</div><div class="rel-lbl">Mode</div></div>';
+  } else { relCard.style.display = 'none'; }
+
+  // System state
+  const ss = d.system_state;
+  const stCard = document.getElementById('stateCard');
+  if (ss) {
+    stCard.style.display = '';
+    const arrow = {'decreasing':'\u2193','stable':'\u2192','variable':'\u223C'}[ss.confidence_trend]||'\u2192';
+    document.getElementById('stateGrid').innerHTML =
+      '<div class="state-item"><div class="state-val">' + ss.active_agents + '</div><div class="state-lbl">Agents</div></div>' +
+      '<div class="state-item"><div class="state-val">' + ss.decisions_made + '</div><div class="state-lbl">Decisions</div></div>' +
+      '<div class="state-item"><div class="state-val">' + ss.replans + '</div><div class="state-lbl">Replans</div></div>' +
+      '<div class="state-item"><div class="state-val">' + arrow + ' ' + ss.confidence_trend + '</div><div class="state-lbl">Confidence</div></div>';
+  } else { stCard.style.display = 'none'; }
+
+  // Agent flow
+  document.getElementById('agentFlow').innerHTML = (d.agent_flow || []).map((s, i) => {
+    const cls = s.toLowerCase().includes('critical') || s.toLowerCase().includes('deficit') ? 'critical' : s.includes('Replan') ? 'replan' : '';
+    return '<div class="flow-step ' + cls + '"><span class="step-num">' + (i+1) + '</span><span>' + s + '</span></div>';
+  }).join('');
+
+  // Insights
+  renderList('insightsCard', 'insightsList', d.insights, '\u25B8');
+
+  // Decision comparison (text format)
+  const dc = d.decision_comparison;
+  const dcCard = document.getElementById('dcCard');
+  if (dc) {
+    dcCard.style.display = '';
+    document.getElementById('dcBody').innerHTML = '<div class="dc-text">' + dc + '</div>';
+  } else { dcCard.style.display = 'none'; }
+
+  // Risk notes
+  renderList('riskNotesCard', 'riskNotesList', d.risk_notes, '\u25B9');
+
+  // Impact analysis
+  const ia = d.impact_analysis;
+  const ic = document.getElementById('impactCard');
+  if (ia && (ia.delay || ia.unmet_demand || ia.risk)) {
+    ic.style.display = '';
+    document.getElementById('impactBody').innerHTML =
+      (ia.delay ? '<div class="impact-row"><span class="impact-label">Delay:</span><span>' + ia.delay + '</span></div>' : '') +
+      (ia.unmet_demand ? '<div class="impact-row"><span class="impact-label">Loss:</span><span>' + ia.unmet_demand + ' unmet</span></div>' : '') +
+      (ia.risk ? '<div class="impact-row"><span class="impact-label">Risk:</span><span>' + ia.risk + '</span></div>' : '');
+  } else { ic.style.display = 'none'; }
+
+  // Plan
+  document.getElementById('plan').textContent = d.plan || 'No plan returned.';
+
+  // Tasks
+  const te = document.getElementById('tasks');
+  const tasks = d.tasks || [];
+  te.innerHTML = tasks.length ? tasks.map(t => {
+    const n = t.title || t.task || 'Untitled';
+    const p = t.priority || 'medium';
+    return '<div class="task-item"><span class="priority-dot ' + p + '"></span><span>' + n + '</span><span style="margin-left:auto;color:var(--muted);font-size:.78rem">' + p + '</span></div>';
+  }).join('') : '<span style="color:var(--muted)">No tasks.</span>';
+
+  // Schedule (with timestamps)
+  const se = document.getElementById('schedule');
+  const sc = d.schedule || [];
+  se.innerHTML = sc.length ? sc.map(s => {
+    const timeStr = s.time ? ' \u2022 ' + s.time : '';
+    return '<div class="sched-item"><span class="sched-day">Day ' + s.day + timeStr + '</span><span>' + s.description + '</span></div>';
+  }).join('') : '<span style="color:var(--muted)">No schedule.</span>';
+
+  // Replanning
+  const re = document.getElementById('replanning');
+  if (d.replanning) {
+    const reason = d.replanning.reason || '';
+    const ch = (d.replanning.changes || []).map(c => '<div class="replan-change">\u26A0 ' + c + '</div>').join('');
+    re.innerHTML = '<div class="replan-box">' + (reason ? '<div class="replan-reason">' + reason + '</div>' : '') + ch + '</div>';
+  } else {
+    re.innerHTML = '<span class="no-replan">\u2713 No replanning needed.</span>';
+  }
+
+  // Outcome summary
+  const ob = document.getElementById('outcomeBar');
+  if (d.outcome_summary) {
+    ob.style.display = '';
+    document.getElementById('outcomeText').textContent = d.outcome_summary;
+  } else { ob.style.display = 'none'; }
+}
+
+function renderList(cardId, listId, items, bullet) {
+  const card = document.getElementById(cardId);
+  const list = document.getElementById(listId);
+  if (items && items.length) {
+    card.style.display = '';
+    list.innerHTML = items.map(t =>
+      '<div class="item"><span class="bullet">' + bullet + '</span><span>' + t + '</span></div>'
+    ).join('');
+  } else { card.style.display = 'none'; }
+}
+
+document.getElementById('query').addEventListener('keydown', e => {
+  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); runSimulation(); }
+});
+</script>
+</body>
+</html>

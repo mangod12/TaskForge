@@ -1,0 +1,11 @@
+.git
+.env
+.claude
+__pycache__
+*.pyc
+ui/
+tests/
+*.md
+.dockerignore
+docker-compose.yml
+alembic.ini

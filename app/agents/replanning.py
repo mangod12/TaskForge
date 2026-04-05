@@ -1,0 +1,137 @@
+"""
+Replanning Agent — triggered when risk_level is "critical".
+
+Adjusts the existing supply chain plan and schedule to mitigate critical risks.
+Uses Gemini to reason about plan adjustments without direct tool calls.
+"""
+
+from __future__ import annotations
+
+import logging
+import uuid
+
+from app.agents.base import BaseAgent, AgentResult
+from app.llm.gemini_client import gemini_client
+
+logger = logging.getLogger(__name__)
+
+
+_SYSTEM_PROMPT = """You are an emergency logistics coordinator adjusting a failed or at-risk delivery plan.
+
+Write like an ops manager filing a plan amendment after a route blockage or supply disruption. Be specific about what changed and why. Never say "adjusted plan for critical risk" — say "Rerouted via NH-59 after NH-16 flooding reported, ETA +3hrs".
+
+You are triggered when risk_level is "critical". Given the current plan, resource state, and execution status, you MUST:
+1. Identify which specific deliveries or tasks are blocked and why
+2. Reroute, reschedule, or swap warehouse sources with exact alternatives
+3. Add emergency measures only if standard rerouting is insufficient
+4. Update the timeline with new ETAs per milestone
+5. Define escalation contacts/steps if the adjusted plan also fails
+
+Your final response MUST be valid JSON with this structure:
+{
+  "adjusted_actions": [
+    {
+      "original_title": "...",
+      "adjusted_title": "...",
+      "change_type": "rerouted|rescheduled|source_swapped|cancelled|added",
+      "reason": "...",
+      "new_priority": "critical|high|medium|low",
+      "new_estimated_days": <number>
+    }
+  ],
+  "emergency_measures": [
+    {"action": "...", "rationale": "...", "timeline_days": <number>}
+  ],
+  "resource_reallocation": [
+    {"from_item": "...", "to_item": "...", "quantity": <number>, "rationale": "..."}
+  ],
+  "adjusted_timeline": {
+    "total_days": <number>,
+    "milestones": [
+      {"day": <number>, "description": "..."}
+    ]
+  },
+  "escalation_steps": ["step 1", "step 2"],
+  "risk_mitigation_summary": "One line: what broke, what was swapped, new ETA"
+}
+
+STYLE RULES:
+- change reasons must be specific: "NH-16 bridge submerged, 4hr detour via NH-59" not "route disruption"
+- emergency measures: "Airlift 100 medical kits from Kolkata IAF base, 6hr delivery" not "emergency airlift"
+- risk_mitigation_summary: "Switched source to Kolkata warehouse, rerouted via NH-59, ETA now 5hrs (+3hrs)" not "Critical risk mitigation applied"
+- Never use "initiated", "leveraging", "coordinated approach"
+"""
+
+
+class ReplanningAgent(BaseAgent):
+    name = "replanning"
+    system_prompt = _SYSTEM_PROMPT
+    available_tools = []  # Pure Gemini reasoning
+
+    async def run(
+        self,
+        task_id: uuid.UUID,
+        task_title: str,
+        task_description: str,
+        context: str = "",
+    ) -> AgentResult:
+        """Adjust plan and schedule to mitigate critical risks."""
+        logger.info(f"[replanning] starting for task {task_id}: {task_title!r}")
+
+        prompt = f"""CRITICAL RISK detected — replan supply chain for: {task_title}
+
+Description: {task_description}
+
+{f"Current State:{chr(10)}{context}" if context else "No prior context — propose emergency measures based on the task description."}
+
+Please:
+1. Identify the most critical risk factors affecting the current plan
+2. Propose adjusted actions (reprioritize, reschedule, add emergency measures)
+3. Reallocate resources to address urgent shortages
+4. Update the timeline with emergency adjustments
+5. Define escalation steps if adjusted plan also fails
+6. Return your adjusted plan as structured JSON
+"""
+
+        try:
+            result = await gemini_client.generate_json(
+                prompt=prompt,
+                system_instruction=self.system_prompt,
+            )
+
+            replan_data = result.get("data", {})
+            token_usage = result.get("token_usage", 0)
+
+            await self._log_step(
+                task_id=task_id,
+                action="replan_complete",
+                output_data={
+                    "adjusted_action_count": len(replan_data.get("adjusted_actions", [])),
+                    "emergency_measure_count": len(replan_data.get("emergency_measures", [])),
+                },
+                reasoning=replan_data.get("risk_mitigation_summary", ""),
+                token_usage=token_usage,
+            )
+
+            return AgentResult(
+                agent_name=self.name,
+                success=True,
+                output={
+                    "replan": replan_data,
+                    "text": replan_data.get("risk_mitigation_summary", ""),
+                },
+                reasoning=replan_data.get("risk_mitigation_summary", ""),
+                token_usage=token_usage,
+                iterations=1,
+            )
+
+        except Exception as e:
+            logger.exception(f"[replanning] failed: {e}")
+            # Return success=True with empty replan so orchestrator can inject fallback
+            return AgentResult(
+                agent_name=self.name,
+                success=True,
+                output={"replan": {}, "text": ""},
+                reasoning="LLM unavailable, orchestrator will apply fallback replan",
+                error=str(e),
+            )
