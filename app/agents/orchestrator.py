@@ -92,7 +92,7 @@ def _build_fallback_replan(fb: dict, crisis_context: dict) -> dict:
     dest_coords = _resolve_city(location) or _resolve_city(dest.split()[0])
     nearest_airport = None
     nearest_port = None
-    alt_route_name = "Route B (NH-59)"  # default
+    alt_route_name = _get_alt_route(fb)
 
     if dest_coords:
         d_lat, d_lon = dest_coords
@@ -408,14 +408,79 @@ def _build_impact_analysis(fb: dict, risk_level: str, crisis_context: dict, repl
 
 
 def _fallback_context(task_title: str) -> dict[str, str | int]:
+    """Build region-aware fallback context from the query text."""
     title = task_title.lower()
-    destination = "Odisha flood zone" if "odisha" in title else task_title
-    source = "Bhubaneswar warehouse" if "odisha" in title or "flood" in title else "central warehouse"
-    item = "food" if "flood" in title else "relief supplies"
-    quantity = 300 if "odisha" in title or "flood" in title else 200
-    route = "Route A (NH-16)"
-    return {"destination": destination, "source": source, "item": item,
-            "quantity": quantity, "route": route}
+
+    # Region-specific depot/route mappings using real data
+    _REGION_MAP = {
+        "odisha":      {"destination": "Puri",       "source": "Bhubaneswar depot",  "route": "NH-16",  "item": "food"},
+        "bhubaneswar": {"destination": "Puri",       "source": "Bhubaneswar depot",  "route": "NH-16",  "item": "food"},
+        "puri":        {"destination": "Puri",       "source": "Bhubaneswar depot",  "route": "NH-16",  "item": "food"},
+        "chennai":     {"destination": "Chennai coast", "source": "Chennai Central depot", "route": "NH-48", "item": "medical supplies"},
+        "tamil nadu":  {"destination": "Chennai coast", "source": "Chennai Central depot", "route": "NH-48", "item": "medical supplies"},
+        "gujarat":     {"destination": "Bhuj",       "source": "Ahmedabad depot",    "route": "NH-27",  "item": "shelter"},
+        "ahmedabad":   {"destination": "Bhuj",       "source": "Ahmedabad depot",    "route": "NH-27",  "item": "shelter"},
+        "rajasthan":   {"destination": "Barmer",     "source": "Jaipur depot",       "route": "NH-15",  "item": "water"},
+        "jaipur":      {"destination": "Barmer",     "source": "Jaipur depot",       "route": "NH-15",  "item": "water"},
+        "uttarakhand": {"destination": "Kedarnath",  "source": "Dehradun depot",     "route": "NH-7",   "item": "food"},
+        "kedarnath":   {"destination": "Kedarnath",  "source": "Dehradun depot",     "route": "NH-7",   "item": "food"},
+        "srinagar":    {"destination": "Leh",        "source": "Srinagar depot",     "route": "NH-1",   "item": "food"},
+        "leh":         {"destination": "Leh",        "source": "Srinagar depot",     "route": "NH-1",   "item": "food"},
+        "kashmir":     {"destination": "Leh",        "source": "Srinagar depot",     "route": "NH-1",   "item": "food"},
+        "mumbai":      {"destination": "Mumbai",     "source": "Mumbai Central warehouse", "route": "Western Express Highway", "item": "food"},
+        "kolkata":     {"destination": "Kolkata",    "source": "Kolkata warehouse",  "route": "NH-16",  "item": "food"},
+        "andaman":     {"destination": "Port Blair", "source": "Chennai Central depot", "route": "sea route via Chennai Port", "item": "relief supplies"},
+        "vizag":       {"destination": "Visakhapatnam", "source": "Visakhapatnam depot", "route": "NH-16", "item": "medical supplies"},
+        "visakhapatnam": {"destination": "Visakhapatnam", "source": "Visakhapatnam depot", "route": "NH-16", "item": "medical supplies"},
+    }
+
+    # Match region from query
+    matched = None
+    for key, ctx in _REGION_MAP.items():
+        if key in title:
+            matched = ctx
+            break
+
+    if not matched:
+        # Try to extract location from _LOCATIONS list
+        for loc in _LOCATIONS:
+            if loc.lower() in title:
+                matched = {"destination": loc, "source": f"{loc} depot", "route": "primary highway", "item": "relief supplies"}
+                break
+
+    if not matched:
+        matched = {"destination": "crisis zone", "source": "nearest depot", "route": "primary route", "item": "relief supplies"}
+
+    # Extract quantity from query
+    quantity = 200
+    numbers = re.findall(r"(\d[\d,]*)\s*(?:unit|ton|kg|litre|pack|crate|mt|familie)", title)
+    if numbers:
+        quantity = int(numbers[0].replace(",", ""))
+    elif "odisha" in title or "flood" in title:
+        quantity = 300
+
+    return {
+        "destination": matched["destination"],
+        "source": matched["source"],
+        "item": matched.get("item", "relief supplies"),
+        "quantity": quantity,
+        "route": matched["route"],
+    }
+
+
+def _get_alt_route(fb: dict) -> str:
+    """Return a region-appropriate alternative route name."""
+    _ALT_ROUTES = {
+        "NH-16": "NH-59 via Khurda",
+        "NH-48": "NH-44 via Bangalore",
+        "NH-27": "via Surendranagar",
+        "NH-15": "NH-14 via Jodhpur",
+        "NH-7": "airlift from Jolly Grant (DED)",
+        "NH-1": "airlift from Srinagar (SXR)",
+        "Western Express Highway": "Eastern Express Highway",
+        "sea route via Chennai Port": "airlift from Chennai (MAA)",
+    }
+    return _ALT_ROUTES.get(fb["route"], f"alternate to {fb['route']}")
 
 
 def _normalize_step(step: str) -> str:
@@ -470,7 +535,7 @@ class OrchestratorAgent(BaseAgent):
         qty = fb["quantity"]
         severity = _compute_severity(qty)
         force_replan = _should_force_replan(task_title)
-        alt_route = "Route B (NH-59)"
+        alt_route = _get_alt_route(fb)
 
         dh = random.choice([5, 6, 7])
         cpct_default = random.randint(14, 20)
