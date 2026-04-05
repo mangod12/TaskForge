@@ -78,6 +78,13 @@ async def on_startup() -> None:
     async with engine.begin() as conn:
         await conn.execute(sa_text("CREATE EXTENSION IF NOT EXISTS vector"))
         await conn.run_sync(Base.metadata.create_all)
+        # Add embedding column if upgrading from pre-pgvector schema
+        try:
+            await conn.execute(sa_text(
+                "ALTER TABLE memory_entries ADD COLUMN IF NOT EXISTS embedding vector(3072)"
+            ))
+        except Exception:
+            pass
     logger.info("Database tables verified/created (pgvector enabled).")
 
     # Register all tools (imports trigger tool_registry.register calls)
@@ -88,10 +95,13 @@ async def on_startup() -> None:
     logger.info("Tools registered.")
 
     # Seed knowledge base with warehouse inventory and route data
-    from app.db.seed import seed_knowledge_base
-    seeded = await seed_knowledge_base()
-    if seeded:
-        logger.info(f"Knowledge base seeded with {seeded} entries.")
+    try:
+        from app.db.seed import seed_knowledge_base
+        seeded = await seed_knowledge_base()
+        if seeded:
+            logger.info(f"Knowledge base seeded with {seeded} entries.")
+    except Exception as e:
+        logger.warning(f"Knowledge base seeding failed (non-fatal): {e}")
 
     logger.info(
         f"TaskForge ready | model={settings.gemini_model} | "
