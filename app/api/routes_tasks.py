@@ -314,18 +314,28 @@ async def warmup_cache(background_tasks: BackgroundTasks) -> dict:
     }
 
 
+async def _warmup_one(q: str) -> None:
+    """Run pipeline for a single preset query and cache the result."""
+    if q in _response_cache:
+        return
+    try:
+        logger.info(f"[warmup] running: {q[:60]}")
+        response = await _run_pipeline_and_build_response(q)
+        _response_cache[q] = response.model_dump()
+        logger.info(f"[warmup] cached: {q[:60]}")
+    except Exception as e:
+        logger.error(f"[warmup] failed for '{q[:60]}': {e}")
+
+
 async def _warmup_presets(queries: list[str]) -> None:
-    """Run pipeline for each preset query and cache the results."""
-    for q in queries:
-        if q in _response_cache:
-            continue
-        try:
-            logger.info(f"[warmup] running: {q[:60]}")
-            response = await _run_pipeline_and_build_response(q)
-            _response_cache[q] = response.model_dump()
-            logger.info(f"[warmup] cached: {q[:60]}")
-        except Exception as e:
-            logger.error(f"[warmup] failed for '{q[:60]}': {e}")
+    """Run all preset pipelines concurrently."""
+    import asyncio
+    pending = [q for q in queries if q not in _response_cache]
+    if not pending:
+        return
+    logger.info(f"[warmup] launching {len(pending)} presets in parallel")
+    await asyncio.gather(*[_warmup_one(q) for q in pending])
+    logger.info(f"[warmup] all done — {len(_response_cache)} cached")
 
 
 
