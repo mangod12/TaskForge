@@ -34,7 +34,6 @@ jobs:
         run: |
           gcloud builds submit \
             --tag ${{ env.IMAGE }}:${{ github.sha }} \
-            --tag ${{ env.IMAGE }}:latest \
             --project ${{ env.PROJECT_ID }}
 
       - name: Deploy to Cloud Run
