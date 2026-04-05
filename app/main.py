@@ -66,11 +66,8 @@ app.add_middleware(
 
 # ── Startup / Shutdown ───────────────────────────────────
 
-@app.on_event("startup")
-async def on_startup() -> None:
-    logger.info("TaskForge starting up...")
-
-    # Create DB tables (with pgvector extension)
+async def _init_db() -> None:
+    """Create DB tables and pgvector extension — must finish before serving."""
     from app.db.database import engine
     from app.db.models import Base
     from sqlalchemy import text as sa_text
@@ -78,7 +75,6 @@ async def on_startup() -> None:
     async with engine.begin() as conn:
         await conn.execute(sa_text("CREATE EXTENSION IF NOT EXISTS vector"))
         await conn.run_sync(Base.metadata.create_all)
-        # Add embedding column if upgrading from pre-pgvector schema
         try:
             await conn.execute(sa_text(
                 "ALTER TABLE memory_entries ADD COLUMN IF NOT EXISTS embedding vector(3072)"
@@ -86,6 +82,30 @@ async def on_startup() -> None:
         except Exception:
             pass
     logger.info("Database tables verified/created (pgvector enabled).")
+
+
+async def _deferred_startup() -> None:
+    """Seed + warmup — runs AFTER uvicorn is already accepting connections."""
+    try:
+        from app.db.seed import seed_knowledge_base
+        seeded = await seed_knowledge_base()
+        if seeded:
+            logger.info(f"Knowledge base seeded with {seeded} entries.")
+    except Exception as e:
+        logger.warning(f"Knowledge base seeding failed (non-fatal): {e}")
+
+    from app.api.routes_tasks import _warmup_presets, PRESET_QUERIES
+    await _warmup_presets(PRESET_QUERIES)
+    logger.info(f"Warmup complete for {len(PRESET_QUERIES)} preset scenarios.")
+
+
+@app.on_event("startup")
+async def on_startup() -> None:
+    import asyncio
+    logger.info("TaskForge starting up...")
+
+    # DB init must complete before serving (fast, ~2s)
+    await _init_db()
 
     # Register all tools (imports trigger tool_registry.register calls)
     import app.tools.task_tools       # noqa: F401
@@ -95,25 +115,13 @@ async def on_startup() -> None:
     import app.tools.route_tool      # noqa: F401
     logger.info("Tools registered.")
 
-    # Seed knowledge base with warehouse inventory and route data
-    try:
-        from app.db.seed import seed_knowledge_base
-        seeded = await seed_knowledge_base()
-        if seeded:
-            logger.info(f"Knowledge base seeded with {seeded} entries.")
-    except Exception as e:
-        logger.warning(f"Knowledge base seeding failed (non-fatal): {e}")
-
     logger.info(
         f"TaskForge ready | model={settings.gemini_model} | "
         f"vertex_ai={settings.use_vertex_ai}"
     )
 
-    # Auto-warmup: pre-cache preset demo scenarios in the background
-    import asyncio
-    from app.api.routes_tasks import _warmup_presets, PRESET_QUERIES
-    asyncio.create_task(_warmup_presets(PRESET_QUERIES))
-    logger.info(f"Background warmup started for {len(PRESET_QUERIES)} preset scenarios.")
+    # Seed + warmup in background — does NOT block port binding
+    asyncio.create_task(_deferred_startup())
 
 
 @app.on_event("shutdown")
