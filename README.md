@@ -4,7 +4,7 @@
 
 TaskForge is a production-grade multi-agent system that coordinates supply chain crisis response using Google Gemini. Given a crisis scenario (flood, cyclone, earthquake), it runs a 4-agent pipeline to assess resources, generate a dispatch plan, execute logistics tasks, and adaptively replan when routes are disrupted.
 
-Built with FastAPI, PostgreSQL, and Gemini 2.0 Flash. Deployed on Google Cloud Run.
+Built with FastAPI, PostgreSQL (pgvector), Gemini 2.5 Flash, and MCP. Deployed on Google Cloud Run.
 
 **Live**: https://taskforge-888893197774.asia-south1.run.app
 
@@ -72,7 +72,7 @@ All agents use **Gemini 2.5 Flash** via function calling. Tools are exposed via 
 3. **ExecutionAgent** creates subtasks, schedules deliveries, assigns truck counts and routes
 4. **ReplanningAgent** fires when crisis keywords (flood, cyclone, earthquake, etc.) are detected - reroutes convoys, adds emergency airlifts, updates ETAs
 
-The system returns **16 structured fields** per execution:
+The system returns **17 structured fields** per execution:
 
 | Field | Description |
 |-------|-------------|
@@ -87,6 +87,7 @@ The system returns **16 structured fields** per execution:
 | `risk_notes` | Active risks (flooding, fuel uncertainty, cascade delays) |
 | `decision_comparison` | Side-by-side warehouse cost/ETA comparison |
 | `system_state` | Live telemetry: agents, decisions made, replans, confidence trend |
+| `reasoning_trace` | Raw LLM thought process per agent with token counts |
 | `impact_analysis` | What happens *without* TaskForge (delay, unmet demand) |
 | `replanning` | Reroute changes + emergency measures (when triggered) |
 | `system_reliability` | Test coverage, pipeline validation status |
@@ -165,11 +166,15 @@ app/
     database.py        # AsyncEngine + session factory
   llm/
     gemini_client.py   # Gemini SDK wrapper (Vertex AI + API key modes)
+    embeddings.py      # Gemini embedding model (3072-dim vectors for pgvector)
+  db/
+    seed.py            # Pre-load 17 inventory/route/fleet entries with embeddings
   tools/
     registry.py        # Tool registry for function calling
     task_tools.py      # create_subtask, update_status, estimate_effort
     knowledge_tool.py  # knowledge_lookup (memory search)
     calendar_tool.py   # schedule_delivery
+    weather_tool.py    # live_weather + disaster_check (Open-Meteo API)
   schemas/
     task_schemas.py    # Pydantic request/response models (16 fields)
   memory/
@@ -306,6 +311,10 @@ To enable CD, add a `GCP_SA_KEY` secret in GitHub repo settings containing the s
 **Rule-based crisis extraction**: Location, crisis type, resource, and severity are extracted via lookup tables + regex, not LLM. This makes crisis context deterministic and instant.
 
 **Real decision counts**: `system_state.decisions_made` is derived from actual pipeline output (plan actions + route selections + execution tasks + replan changes), not hardcoded.
+
+**Seeded knowledge base with vector search**: 17 entries pre-loaded on startup — warehouse inventories, route distances, truck fleets, and SOPs for 6 regions. Gemini embeddings (3072-dim via `gemini-embedding-001`) enable semantic search via pgvector cosine similarity, with keyword ILIKE fallback.
+
+**Live external data**: `live_weather` and `disaster_check` tools fetch real-time data from Open-Meteo APIs (temperature, precipitation, flood risk, river discharge) — no API key needed, verifiable by judges.
 
 **No separate frontend build**: The dashboard is a single `index.html` served by FastAPI's `StaticFiles`. No npm, no webpack, no build step. Works in any browser.
 
