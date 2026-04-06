@@ -6,7 +6,7 @@ TaskForge is a production-grade multi-agent system that coordinates supply chain
 
 Built with FastAPI, PostgreSQL (pgvector), Gemini 2.5 Flash, and MCP. Deployed on Google Cloud Run.
 
-**Live**: https://taskforge-888893197774.asia-south1.run.app
+**Live**: https://taskforge-ebqzvaqu6a-el.a.run.app
 
 [![CI — Lint & Test](https://github.com/mangod12/google_apac_2026/actions/workflows/ci.yml/badge.svg)](https://github.com/mangod12/google_apac_2026/actions/workflows/ci.yml)
 [![CD — Deploy to Cloud Run](https://github.com/mangod12/google_apac_2026/actions/workflows/deploy.yml/badge.svg)](https://github.com/mangod12/google_apac_2026/actions/workflows/deploy.yml)
@@ -15,12 +15,12 @@ Built with FastAPI, PostgreSQL (pgvector), Gemini 2.5 Flash, and MCP. Deployed o
 
 ## Live Demo
 
-**Dashboard**: https://taskforge-888893197774.asia-south1.run.app
+**Dashboard**: https://taskforge-ebqzvaqu6a-el.a.run.app
 
 6 preset scenarios available on the dashboard — click any chip to run instantly.
 
 ```bash
-curl -X POST https://taskforge-888893197774.asia-south1.run.app/execute \
+curl -X POST https://taskforge-ebqzvaqu6a-el.a.run.app/execute \
   -H "Content-Type: application/json" \
   -d '{"query": "Flood in Odisha causing food shortage across 3 districts"}'
 ```
@@ -121,7 +121,7 @@ All 7 tools are exposed via an **MCP server** embedded in the FastAPI app using 
 from mcp.client.sse import sse_client
 from mcp import ClientSession
 
-async with sse_client("https://taskforge-888893197774.asia-south1.run.app/mcp/sse") as (r, w):
+async with sse_client("https://taskforge-ebqzvaqu6a-el.a.run.app/mcp/sse") as (r, w):
     async with ClientSession(r, w) as session:
         await session.initialize()
         tools = await session.list_tools()        # 7 tools
