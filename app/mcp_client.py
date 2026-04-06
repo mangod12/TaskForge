@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 from typing import Any
 
 logger = logging.getLogger(__name__)
@@ -16,7 +17,8 @@ logger = logging.getLogger(__name__)
 
 def _get_mcp_sse_url() -> str:
     from app.config import settings
-    return f"http://127.0.0.1:{settings.port}/mcp/sse"
+    host = os.getenv("MCP_HOST", "127.0.0.1")
+    return f"http://{host}:{settings.port}/mcp/sse"
 
 
 async def call_tool_via_mcp(name: str, args: dict[str, Any]) -> dict[str, Any]:
@@ -42,6 +44,13 @@ async def call_tool_via_mcp(name: str, args: dict[str, Any]) -> dict[str, Any]:
                 return {"result": "empty"}
 
     except Exception as e:
-        logger.debug(f"[mcp_client] MCP call failed for '{name}', using direct registry: {e}")
+        logger.warning(f"[mcp_client] MCP call failed for '{name}', using direct registry: {e}")
         from app.tools.registry import tool_registry
-        return await tool_registry.execute(name, args)
+        result = await tool_registry.execute(name, args)
+        if isinstance(result, dict):
+            result["_mcp_fallback"] = True
+            return result
+        logger.warning(
+            f"[mcp_client] Tool '{name}' returned non-dict fallback type: {type(result).__name__}"
+        )
+        return {"result": result, "_mcp_fallback": True}

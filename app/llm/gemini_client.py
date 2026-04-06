@@ -7,6 +7,8 @@ from __future__ import annotations
 
 import json
 import logging
+import asyncio
+import threading
 from typing import Any, Optional
 
 from google import genai
@@ -31,12 +33,20 @@ def _build_client() -> genai.Client:
 
 # Module-level singleton (lazy)
 _client: Optional[genai.Client] = None
+_client_lock: Optional[asyncio.Lock] = None
+_client_lock_init_guard = threading.Lock()
 
 
-def get_client() -> genai.Client:
-    global _client
+async def get_client() -> genai.Client:
+    global _client, _client_lock
+    if _client_lock is None:
+        with _client_lock_init_guard:
+            if _client_lock is None:
+                _client_lock = asyncio.Lock()
     if _client is None:
-        _client = _build_client()
+        async with _client_lock:
+            if _client is None:
+                _client = _build_client()
     return _client
 
 
@@ -56,7 +66,7 @@ class GeminiClient:
         Generate text from Gemini.
         Returns {"text": str, "token_usage": int}
         """
-        client = get_client()
+        client = await get_client()
 
         config_kwargs: dict[str, Any] = {}
         if system_instruction:
@@ -66,7 +76,8 @@ class GeminiClient:
 
         config = types.GenerateContentConfig(**config_kwargs) if config_kwargs else None
 
-        response = client.models.generate_content(
+        response = await asyncio.to_thread(
+            client.models.generate_content,
             model=self.model,
             contents=prompt,
             config=config,
@@ -134,7 +145,7 @@ class GeminiClient:
             "token_usage": int
         }
         """
-        client = get_client()
+        client = await get_client()
 
         config_kwargs: dict[str, Any] = {}
         if system_instruction:
@@ -157,7 +168,8 @@ class GeminiClient:
 
         config = types.GenerateContentConfig(**config_kwargs) if config_kwargs else None
 
-        response = client.models.generate_content(
+        response = await asyncio.to_thread(
+            client.models.generate_content,
             model=self.model,
             contents=prompt,
             config=config,

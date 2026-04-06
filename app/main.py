@@ -18,6 +18,7 @@ import logging
 import logging.config
 
 from pathlib import Path
+import asyncio
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -28,6 +29,7 @@ from app.api.routes_health import router as health_router
 from app.api.routes_tasks import demo_router, router as tasks_router
 from app.config import settings
 from app.mcp_server import mcp as mcp_server
+import app.startup_state as startup_state
 
 # ── Logging setup ────────────────────────────────────────
 
@@ -57,10 +59,10 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Tighten in production
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_origins=settings.cors_origins_list,
+    allow_credentials=settings.cors_allow_credentials,
+    allow_methods=["GET", "POST", "DELETE", "OPTIONS"],
+    allow_headers=["Authorization", "Content-Type"],
 )
 
 
@@ -87,11 +89,7 @@ async def _init_db() -> None:
 async def _deferred_startup() -> None:
     """DB init + seed + warmup — runs AFTER uvicorn is already accepting connections."""
     # DB init (Cloud SQL proxy can take 10-30s on cold start)
-    try:
-        await _init_db()
-    except Exception as e:
-        logger.error(f"DB init failed: {e}")
-        return
+    await _init_db()
 
     # Seed knowledge base
     try:
@@ -110,7 +108,6 @@ async def _deferred_startup() -> None:
 
 @app.on_event("startup")
 async def on_startup() -> None:
-    import asyncio
     logger.info("TaskForge starting up...")
 
     # Register all tools (pure Python imports — instant, no I/O)
@@ -127,7 +124,17 @@ async def on_startup() -> None:
     )
 
     # ALL I/O (DB + seed + warmup) runs after port binds
-    asyncio.create_task(_deferred_startup())
+    async def _run_startup_work() -> None:
+        try:
+            await _deferred_startup()
+            startup_state.startup_error = None
+        except Exception as exc:
+            startup_state.startup_error = str(exc)
+            logger.exception("Deferred startup failed")
+        finally:
+            startup_state.startup_complete = True
+
+    asyncio.create_task(_run_startup_work())
 
 
 @app.on_event("shutdown")

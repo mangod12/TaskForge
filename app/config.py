@@ -32,11 +32,23 @@ class Settings(BaseSettings):
 
     # ── Agent Settings ───────────────────────────────────
     max_agent_iterations: int = Field(default=10, description="Max tool-call loops per agent run")
+    pipeline_timeout_seconds: int = Field(default=300, description="Max wall time for one pipeline run")
     log_level: str = Field(default="INFO")
+
+    # ── Security / CORS ───────────────────────────────────
+    cors_allowed_origins: str = Field(
+        default="http://localhost:8000,http://localhost:3000",
+        description="Comma-separated CORS allowed origins",
+    )
+    cors_allow_credentials: bool = Field(default=False, description="Allow credentialed CORS requests")
 
     @property
     def use_vertex_ai(self) -> bool:
         return self.vertex_ai_project is not None and self.gemini_api_key is None
+
+    @property
+    def cors_origins_list(self) -> list[str]:
+        return [o.strip() for o in self.cors_allowed_origins.split(",") if o.strip()]
 
     model_config = {"env_file": ".env", "env_file_encoding": "utf-8", "extra": "ignore"}
 
