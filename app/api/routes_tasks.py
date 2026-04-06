@@ -16,6 +16,7 @@ from __future__ import annotations
 import logging
 import time
 import uuid
+import asyncio
 
 from fastapi import APIRouter, BackgroundTasks, HTTPException, Query
 
@@ -96,17 +97,28 @@ async def _run_pipeline(task_id: uuid.UUID, task_title: str, task_description: s
     import app.tools.route_tool      # noqa: F401
 
     orchestrator = OrchestratorAgent()
+    from app.config import settings
     try:
-        result = await orchestrator.run(
-            task_id=task_id,
-            task_title=task_title,
-            task_description=task_description,
+        result = await asyncio.wait_for(
+            orchestrator.run(
+                task_id=task_id,
+                task_title=task_title,
+                task_description=task_description,
+            ),
+            timeout=settings.pipeline_timeout_seconds,
         )
         if not result.success:
             logger.error(f"[pipeline] task {task_id} failed: {result.error}")
             async with async_session_factory() as session:
                 repo = TaskRepository(session)
                 await repo.update_status(task_id, TaskStatus.FAILED)
+    except asyncio.TimeoutError:
+        logger.error(
+            f"[pipeline] task {task_id} timed out after {settings.pipeline_timeout_seconds}s"
+        )
+        async with async_session_factory() as session:
+            repo = TaskRepository(session)
+            await repo.update_status(task_id, TaskStatus.FAILED)
     except Exception as e:
         logger.exception(f"[pipeline] unhandled exception for task {task_id}: {e}")
         try:
