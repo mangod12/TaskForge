@@ -14,7 +14,6 @@ Routes:
 
 from __future__ import annotations
 
-import asyncio
 import logging
 import logging.config
 
@@ -88,6 +87,8 @@ async def _deferred_startup() -> None:
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Application lifespan: startup and shutdown logic."""
+    import asyncio
+
     logger.info("TaskForge starting up...")
 
     # Register all tools (pure Python imports — instant, no I/O)
