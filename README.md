@@ -1,15 +1,13 @@
 # TaskForge - Multi-Agent Crisis Logistics Coordination System
 
-**Google APAC Hackathon 2026 Submission**
-
 TaskForge is a production-grade multi-agent system that coordinates supply chain crisis response using Google Gemini. Given a crisis scenario (flood, cyclone, earthquake), it runs a 4-agent pipeline to assess resources, generate a dispatch plan, execute logistics tasks, and adaptively replan when routes are disrupted.
 
 Built with FastAPI, PostgreSQL (pgvector), Gemini 2.5 Flash, and MCP. Deployed on Google Cloud Run.
 
 **Live**: https://taskforge-ebqzvaqu6a-el.a.run.app
 
-[![CI — Lint & Test](https://github.com/mangod12/google_apac_2026/actions/workflows/ci.yml/badge.svg)](https://github.com/mangod12/google_apac_2026/actions/workflows/ci.yml)
-[![CD — Deploy to Cloud Run](https://github.com/mangod12/google_apac_2026/actions/workflows/deploy.yml/badge.svg)](https://github.com/mangod12/google_apac_2026/actions/workflows/deploy.yml)
+[![CI — Lint & Test](https://github.com/mangod12/TaskForge/actions/workflows/ci.yml/badge.svg)](https://github.com/mangod12/TaskForge/actions/workflows/ci.yml)
+[![CD — Deploy to Cloud Run](https://github.com/mangod12/TaskForge/actions/workflows/deploy.yml/badge.svg)](https://github.com/mangod12/TaskForge/actions/workflows/deploy.yml)
 
 ---
 
