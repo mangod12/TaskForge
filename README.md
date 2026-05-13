@@ -1,5 +1,11 @@
 # TaskForge - Multi-Agent Crisis Logistics Coordination System
+# TaskForge
 
+> Built for the **Google Cloud Gen AI Academy APAC 2026 (Cohort 1)** — a multi-agent crisis logistics coordinator using Gemini 2.5 Flash, MCP, and pgvector RAG on Google Cloud Run.
+
+[![Cloud Run](https://img.shields.io/badge/deployed-Cloud%20Run-4285F4)](https://your-cloud-run-url)
+[![Gemini](https://img.shields.io/badge/powered%20by-Gemini%202.5-orange)](https://ai.google.dev)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 TaskForge is a production-grade multi-agent system that coordinates supply chain crisis response using Google Gemini. Given a crisis scenario (flood, cyclone, earthquake), it runs a 4-agent pipeline to assess resources, generate a dispatch plan, execute logistics tasks, and adaptively replan when routes are disrupted.
 
 Built with FastAPI, PostgreSQL (pgvector), Gemini 2.5 Flash, and MCP. Deployed on Google Cloud Run.
