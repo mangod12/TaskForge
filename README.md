@@ -1,356 +1,140 @@
-# TaskForge - Multi-Agent Crisis Logistics Coordination System
 # TaskForge
 
-> Built for the **Google Cloud Gen AI Academy APAC 2026 (Cohort 1)** — a multi-agent crisis logistics coordinator using Gemini 2.5 Flash, MCP, and pgvector RAG on Google Cloud Run.
+Multi-agent crisis logistics coordinator built with FastAPI, Gemini, MCP, PostgreSQL, and pgvector.
 
-[![Cloud Run](https://img.shields.io/badge/deployed-Cloud%20Run-4285F4)](https://your-cloud-run-url)
-[![Gemini](https://img.shields.io/badge/powered%20by-Gemini%202.5-orange)](https://ai.google.dev)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-TaskForge is a production-grade multi-agent system that coordinates supply chain crisis response using Google Gemini. Given a crisis scenario (flood, cyclone, earthquake), it runs a 4-agent pipeline to assess resources, generate a dispatch plan, execute logistics tasks, and adaptively replan when routes are disrupted.
+TaskForge turns a crisis request such as "Flood in Odisha causing food shortage across 3 districts" into a structured logistics plan. The app coordinates specialist agents, records task state in PostgreSQL, exposes MCP tools over SSE, and keeps deterministic fallbacks so the demo still produces operational output when the LLM is unavailable.
 
-Built with FastAPI, PostgreSQL (pgvector), Gemini 2.5 Flash, and MCP. Deployed on Google Cloud Run.
+## What Is In This Repo
 
-**Live**: https://taskforge-ebqzvaqu6a-el.a.run.app
-
-[![CI — Lint & Test](https://github.com/mangod12/TaskForge/actions/workflows/ci.yml/badge.svg)](https://github.com/mangod12/TaskForge/actions/workflows/ci.yml)
-[![CD — Deploy to Cloud Run](https://github.com/mangod12/TaskForge/actions/workflows/deploy.yml/badge.svg)](https://github.com/mangod12/TaskForge/actions/workflows/deploy.yml)
-
----
-
-## Live Demo
-
-**Dashboard**: https://taskforge-ebqzvaqu6a-el.a.run.app
-
-6 preset scenarios available on the dashboard — click any chip to run instantly.
-
-```bash
-curl -X POST https://taskforge-ebqzvaqu6a-el.a.run.app/execute \
-  -H "Content-Type: application/json" \
-  -d '{"query": "Flood in Odisha causing food shortage across 3 districts"}'
-```
-
----
+| Area | Path | What it does |
+|---|---|---|
+| FastAPI app | `app/main.py` | Mounts health, task/demo, static UI, and MCP endpoints. |
+| Agent pipeline | `app/agents/` | Orchestrator, resource audit, planning, execution, and replanning agents. |
+| MCP tools | `app/tools/` | Task, route, weather, calendar, and knowledge tools registered at startup. |
+| Database | `app/db/`, `alembic/` | Async SQLAlchemy models, repositories, seed data, and migrations. |
+| Memory/RAG | `app/memory/`, `app/llm/` | Context assembly, embeddings, Gemini client, and pgvector-backed knowledge. |
+| API routes | `app/api/` | Health and task execution endpoints. |
+| Static UI | `app/static/index.html`, `ui/app.py` | Browser dashboard and optional Streamlit UI. |
+| Tests | `tests/` | Health, CRUD, validation, Gemini client, execution, and hardening tests. |
 
 ## Architecture
 
-```
-                    +-----------------------+
-                    |   FastAPI REST API     |
-                    |   /execute  /api/v1/*  |
-                    +-----------+-----------+
-                                |
-                                v
-                    +-----------+-----------+
-                    |   OrchestratorAgent    |
-                    |   (Central Coordinator)|
-                    +-----------+-----------+
-                                |
-            +-------------------+-------------------+
-            |                   |                   |
-            v                   v                   v
-    +-------+------+   +-------+------+   +--------+-----+
-    | ResourceAgent |   | PlanningAgent|   | ExecutionAgent|
-    | (Inventory +  |   | (Route +     |   | (Dispatch +   |
-    |  Risk Audit)  |   |  Strategy)   |   |  Scheduling)  |
-    +-------+------+   +-------+------+   +--------+-----+
-            |                   |                   |
-            +-------------------+-------------------+
-                                |
-                     (if crisis keyword detected)
-                                |
-                                v
-                    +-----------+-----------+
-                    |   ReplanningAgent     |
-                    |   (Reroute + Adapt)   |
-                    +-----------------------+
+```text
+User query
+  -> FastAPI /execute or /api/v1/tasks
+  -> OrchestratorAgent
+       -> ResourceAgent      inventory and shortage analysis
+       -> PlanningAgent      source depot, route, cost, ETA
+       -> ExecutionAgent     subtasks, delivery schedule, dispatch actions
+       -> ReplanningAgent    disruption reroute when crisis keywords appear
+  -> Task repository + memory context
+  -> JSON response with plan, tasks, risk notes, agent flow, and reliability fields
 ```
 
-All agents use **Gemini 2.5 Flash** via function calling. Tools are exposed via **MCP (Model Context Protocol)** over SSE transport. Each agent has deterministic fallback logic that produces realistic operational output when the LLM is unavailable.
+The app also mounts an MCP server:
 
----
+- `GET /mcp/sse` for MCP SSE connections.
+- `POST /mcp/messages/` for MCP message handling.
 
-## What It Does
+Registered tool modules are imported during FastAPI startup:
 
-1. **ResourceAgent** audits warehouse inventory and computes shortage severity (Critical/Moderate/Low based on unit thresholds)
-2. **PlanningAgent** selects the optimal source depot, compares cost and ETA across warehouses, generates a multi-step dispatch plan
-3. **ExecutionAgent** creates subtasks, schedules deliveries, assigns truck counts and routes
-4. **ReplanningAgent** fires when crisis keywords (flood, cyclone, earthquake, etc.) are detected - reroutes convoys, adds emergency airlifts, updates ETAs
+- `task_tools`
+- `knowledge_tool`
+- `calendar_tool`
+- `weather_tool`
+- `route_tool`
 
-The system returns **17 structured fields** per execution:
+## API Surface
 
-| Field | Description |
-|-------|-------------|
-| `summary` | One-line operational summary with route and reroute info |
-| `crisis_context` | Extracted location, crisis type, resource, shortage, severity |
-| `plan` | Strategy text with warehouse-to-destination routing |
-| `tasks` | Prioritized task breakdown (critical/high/medium) |
-| `schedule` | Day-by-day timeline with timestamps (Day 1 06:00, etc.) |
-| `agent_flow` | Step-by-step trace of what each agent decided |
-| `confidence_score` | 0.0-1.0 pipeline confidence (drops with replanning) |
-| `insights` | Operational insights (cost comparisons, route risks) |
-| `risk_notes` | Active risks (flooding, fuel uncertainty, cascade delays) |
-| `decision_comparison` | Side-by-side warehouse cost/ETA comparison |
-| `system_state` | Live telemetry: agents, decisions made, replans, confidence trend |
-| `reasoning_trace` | Raw LLM thought process per agent with token counts |
-| `impact_analysis` | What happens *without* TaskForge (delay, unmet demand) |
-| `replanning` | Reroute changes + emergency measures (when triggered) |
-| `system_reliability` | Test coverage, pipeline validation status |
-| `outcome_summary` | Final judge line: "300-unit shortage covered in ~4 days..." |
-| `execution_time` | Wall-clock time for the full pipeline |
+Core routes are mounted from `app/api/routes_health.py` and `app/api/routes_tasks.py`.
 
----
+Common local routes:
 
-## MCP Integration (Model Context Protocol)
+| Route | Purpose |
+|---|---|
+| `GET /` | Static dashboard when `app/static/index.html` exists. |
+| `GET /health` | Service readiness and startup status. |
+| `POST /execute` | Run the crisis logistics agent pipeline. |
+| `GET /api/v1/tasks` | List stored tasks. |
+| `POST /api/v1/tasks` | Create a task. |
+| `DELETE /api/v1/tasks/{task_id}` | Delete a task. |
+| `GET /docs` | Swagger UI. |
+| `GET /mcp/sse` | MCP SSE transport. |
 
-All 7 tools are exposed via an **MCP server** embedded in the FastAPI app using SSE transport:
+## Local Development
 
-| MCP Tool | Category | Description |
-|----------|----------|-------------|
-| `create_subtask` | Task Manager | Create subtasks under a parent task |
-| `update_task_status` | Task Manager | Update task lifecycle status |
-| `estimate_effort` | Task Manager | Estimate hours/days for a task |
-| `knowledge_lookup` | Notes/Memory | Search stored knowledge entries |
-| `schedule_delivery` | Calendar | Schedule logistics deliveries |
-| `live_weather` | Data Source | Real-time weather from Open-Meteo API |
-| `disaster_check` | Data Source | Flood warnings from Open-Meteo Flood API |
-
-**MCP endpoints:**
-- `GET /mcp/sse` — SSE connection for MCP clients
-- `POST /mcp/messages` — MCP message handler
-
-**How agents use MCP:** Each agent's tool calls route through an MCP client (`app/mcp_client.py`) that connects to the embedded MCP server via SSE. This proves full MCP compliance — tools are discovered, invoked, and results returned through the MCP protocol layer. Falls back to direct registry if MCP is unavailable.
-
-```python
-# Connect to TaskForge MCP server from any MCP client
-from mcp.client.sse import sse_client
-from mcp import ClientSession
-
-async with sse_client("https://taskforge-ebqzvaqu6a-el.a.run.app/mcp/sse") as (r, w):
-    async with ClientSession(r, w) as session:
-        await session.initialize()
-        tools = await session.list_tools()        # 7 tools
-        result = await session.call_tool("live_weather", {"location_name": "mumbai"})
-```
-
----
-
-## Tech Stack
-
-| Layer | Technology |
-|-------|-----------|
-| API | **FastAPI** + Uvicorn (async, production-grade) |
-| LLM | **Google Gemini 2.5 Flash** via `google-genai` SDK |
-| MCP | **Model Context Protocol** (SSE transport, 7 tools) |
-| Database | **PostgreSQL 16** + SQLAlchemy 2.0 (async) + **pgvector** (semantic search) |
-| Migrations | Alembic |
-| Frontend | Built-in HTML/CSS/JS dashboard (served by FastAPI, no separate build) |
-| Testing | pytest + pytest-asyncio + httpx (34 E2E tests, 100% pass) |
-| Deployment | Docker + **Google Cloud Run** |
-| Language | Python 3.12 |
-
----
-
-## Project Structure
-
-```
-app/
-  agents/
-    orchestrator.py    # Central coordinator - runs 4-agent pipeline
-    resource.py        # Inventory audit + shortage computation
-    planner.py         # Route selection + dispatch strategy
-    execution.py       # Task creation + delivery scheduling
-    replanning.py      # Emergency rerouting + plan adjustment
-    base.py            # Abstract agent with function-calling loop
-  api/
-    routes_tasks.py    # REST endpoints (CRUD + /execute)
-    routes_health.py   # Health check with DB connectivity
-  db/
-    models.py          # Task, AgentLog, MemoryEntry (PostgreSQL + JSONB)
-    repositories.py    # Async CRUD (Repository pattern)
-    database.py        # AsyncEngine + session factory
-  llm/
-    gemini_client.py   # Gemini SDK wrapper (Vertex AI + API key modes)
-    embeddings.py      # Gemini embedding model (3072-dim vectors for pgvector)
-  db/
-    seed.py            # Pre-load 17 inventory/route/fleet entries with embeddings
-  tools/
-    registry.py        # Tool registry for function calling
-    task_tools.py      # create_subtask, update_status, estimate_effort
-    knowledge_tool.py  # knowledge_lookup (memory search)
-    calendar_tool.py   # schedule_delivery
-    weather_tool.py    # live_weather + disaster_check (Open-Meteo API)
-  schemas/
-    task_schemas.py    # Pydantic request/response models (16 fields)
-  memory/
-    context.py         # ContextManager for agent memory persistence
-  static/
-    index.html         # Interactive dashboard (dark theme, responsive)
-  mcp_server.py        # MCP server — 7 tools via SSE transport
-  mcp_client.py        # MCP client — routes agent tool calls through MCP
-  config.py            # pydantic-settings (env vars + .env)
-  main.py              # App entry point, startup, CORS, MCP mount, routing
-tests/
-  conftest.py          # Async fixtures, real PostgreSQL, session-scoped
-  test_health.py       # Health + DB connectivity
-  test_task_crud.py    # Create, list, get, delete tasks
-  test_execute.py      # Full pipeline E2E (flood, cyclone, earthquake)
-  test_agent_logs.py   # Agent log persistence
-  test_validation.py   # Input validation, error handling, OpenAPI
-```
-
----
-
-## Local Setup
-
-### 1. Start PostgreSQL
+TaskForge expects PostgreSQL with pgvector for the full path. The included compose file starts the database service.
 
 ```bash
-docker compose up db -d
-```
+git clone https://github.com/mangod12/TaskForge.git
+cd TaskForge
 
-### 2. Install dependencies
-
-```bash
+python -m venv .venv
+. .venv/Scripts/activate  # Windows PowerShell users can use .venv\Scripts\Activate.ps1
 pip install -r requirements.txt
+
+docker compose up -d db
+uvicorn app.main:app --reload --port 8000
 ```
 
-### 3. Configure environment
+Open:
+
+- Dashboard: `http://localhost:8000`
+- Swagger: `http://localhost:8000/docs`
+- Health: `http://localhost:8000/health`
+
+Run a scenario:
 
 ```bash
-cp .env.example .env
-# Set GEMINI_API_KEY or VERTEX_AI_PROJECT
+curl -X POST http://localhost:8000/execute ^
+  -H "Content-Type: application/json" ^
+  -d "{\"query\":\"Flood in Odisha causing food shortage across 3 districts\"}"
 ```
 
-### 4. Run
+## Configuration
+
+Start from `.env.example`.
+
+Important settings:
+
+| Variable | Purpose |
+|---|---|
+| `DATABASE_URL` | Async SQLAlchemy database URL. |
+| `GEMINI_API_KEY` | Gemini API key for LLM-backed agent output. |
+| `GEMINI_MODEL` | Model name. CI currently uses `gemini-2.0-flash`; deployment config uses `gemini-2.5-flash`. |
+| `USE_VERTEX_AI` | Enables Vertex AI path when configured. |
+| `LOG_LEVEL` | Runtime logging level. |
+
+When no LLM path is available, the agents use fallback logic for credible demo output.
+
+## Tests
 
 ```bash
-uvicorn app.main:app --host 0.0.0.0 --port 8000
+python -m pytest tests/ -v --tb=short
 ```
 
-Open http://localhost:8000 for the dashboard.
+The CI workflow starts `pgvector/pgvector:pg16`, installs dependencies, and runs the full `tests/` directory.
 
-### 5. Run tests
+## Deployment
 
-```bash
-pip install pytest pytest-asyncio httpx
-python -m pytest tests/ -v
-```
+The repo includes:
 
-```
-34 passed in ~150s
-```
+- `Dockerfile`
+- `docker-compose.yml`
+- `.github/workflows/ci.yml`
+- `.github/workflows/deploy.yml`
 
----
+The Cloud Run deploy workflow builds an image, deploys service `taskforge`, attaches a Cloud SQL instance, sets Gemini configuration, and verifies `/health`.
 
-## API Endpoints
+The README intentionally does not link a live demo URL as a source of truth. Use the GitHub Actions deployment output or Cloud Run service URL after the current deployment is healthy.
 
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| `POST` | `/execute` | Synchronous demo - runs full pipeline, returns 16-field response |
-| `POST` | `/api/v1/tasks` | Async task submission (202 Accepted, background pipeline) |
-| `GET` | `/api/v1/tasks` | List tasks (paginated, limit/offset) |
-| `GET` | `/api/v1/tasks/{id}` | Get task with structured results |
-| `GET` | `/api/v1/tasks/{id}/logs` | Agent execution logs (chronological) |
-| `DELETE` | `/api/v1/tasks/{id}` | Delete task + cascade subtasks/logs |
-| `GET` | `/health` | Service health + DB connectivity |
-| `GET` | `/docs` | Swagger UI (auto-generated) |
+## Current Limitations
 
----
+- Startup DB initialization and preset warmup are deferred; `/health` should be checked before demos.
+- pgvector is required for the intended PostgreSQL-backed memory path.
+- The static dashboard is a lightweight reviewer surface, not a full operations console.
+- MCP transport is SSE-based and intended for compatible MCP clients.
 
-## Deploy to Google Cloud Run
+## License
 
-```bash
-export PROJECT_ID=your-gcp-project
-export REGION=asia-south1
-
-# Build
-gcloud builds submit --tag gcr.io/$PROJECT_ID/taskforge
-
-# Deploy
-gcloud run deploy taskforge \
-  --image gcr.io/$PROJECT_ID/taskforge \
-  --region $REGION \
-  --platform managed \
-  --allow-unauthenticated \
-  --set-env-vars="DATABASE_URL=postgresql+asyncpg://USER:PASS@HOST:5432/taskforge" \
-  --set-env-vars="VERTEX_AI_PROJECT=$PROJECT_ID" \
-  --set-env-vars="VERTEX_AI_LOCATION=$REGION" \
-  --set-env-vars="GEMINI_MODEL=gemini-2.0-flash" \
-  --memory=1Gi --timeout=300 --min-instances=0 --max-instances=3
-```
-
----
-
-## GCP Runtime Safety Notes
-
-- **CORS is now allowlist-based** via `CORS_ALLOWED_ORIGINS` (comma-separated). Keep this strict in production.
-- **Pipeline execution timeout** is controlled by `PIPELINE_TIMEOUT_SECONDS` (default: 300s) to avoid stuck background runs.
-- **Health endpoint readiness** now reports `starting` until deferred DB/bootstrap work completes.
-- **Cloud Run DB pooling** is tuned per instance (`pool_size=5`, `max_overflow=5` on Cloud Run) to reduce Cloud SQL connection pressure.
-- **MCP fallback observability**: when MCP transport fails and direct tool registry is used, tool output includes `_mcp_fallback: true`.
-- **Gemini client safety**: client singleton initialization is lock-guarded and model calls run in a worker thread to avoid event-loop blocking.
-
----
-
-## CI/CD Pipeline
-
-Two GitHub Actions workflows run automatically:
-
-**CI — Lint & Test** (on every push and PR to `main`):
-- Spins up PostgreSQL 16 service container
-- Installs dependencies
-- Runs all 34 E2E tests against real PostgreSQL
-
-**CD — Deploy to Cloud Run** (on push to `main`):
-- Authenticates with GCP via service account
-- Builds Docker image via Cloud Build
-- Deploys to Cloud Run with Cloud SQL connection
-- Runs a health check to verify the deployment
-
-```
-.github/workflows/
-  ci.yml      # Test pipeline — PostgreSQL + pytest
-  deploy.yml  # Build + deploy to Cloud Run
-```
-
-To enable CD, add a `GCP_SA_KEY` secret in GitHub repo settings containing the service account JSON key with Cloud Run Admin, Cloud Build Editor, Cloud SQL Client, and Artifact Registry Writer roles.
-
----
-
-## Key Design Decisions
-
-**Deterministic fallbacks**: Every agent has hardcoded fallback data that produces ops-engineer quality output. The system is fully functional even without LLM access - validated by running the full pipeline with billing disabled.
-
-**Forced replanning**: `_should_force_replan()` checks for crisis keywords (flood, cyclone, war, etc.) in the query. This guarantees replanning fires for demo scenarios regardless of LLM risk assessment.
-
-**Rule-based crisis extraction**: Location, crisis type, resource, and severity are extracted via lookup tables + regex, not LLM. This makes crisis context deterministic and instant.
-
-**Real decision counts**: `system_state.decisions_made` is derived from actual pipeline output (plan actions + route selections + execution tasks + replan changes), not hardcoded.
-
-**Seeded knowledge base with vector search**: 17 entries pre-loaded on startup — warehouse inventories, route distances, truck fleets, and SOPs for 6 regions. Gemini embeddings (3072-dim via `gemini-embedding-001`) enable semantic search via pgvector cosine similarity, with keyword ILIKE fallback.
-
-**Live external data**: `live_weather` and `disaster_check` tools fetch real-time data from Open-Meteo APIs (temperature, precipitation, flood risk, river discharge) — no API key needed, verifiable by judges.
-
-**No separate frontend build**: The dashboard is a single `index.html` served by FastAPI's `StaticFiles`. No npm, no webpack, no build step. Works in any browser.
-
----
-
-## Testing
-
-34 E2E tests against real PostgreSQL (no mocks):
-
-- **Health**: DB connectivity verification
-- **CRUD**: Create (202), list with pagination, get by ID, delete with cascade
-- **Pipeline**: Full agent execution for flood/cyclone/earthquake scenarios, all 16 response fields validated
-- **Replanning**: Verified crisis keywords trigger rerouting, non-crisis queries skip it
-- **Validation**: Schema enforcement, UUID format, pagination bounds, empty input rejection
-- **Persistence**: Tasks written to DB during pipeline, retrievable via GET
-
-```
-tests/test_health.py       2 passed
-tests/test_task_crud.py    9 passed
-tests/test_execute.py     11 passed
-tests/test_agent_logs.py   2 passed
-tests/test_validation.py  10 passed
-========================= 34 passed
-```
+MIT. See [LICENSE](LICENSE).
