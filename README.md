@@ -4,6 +4,8 @@ Multi-agent crisis logistics coordinator built with FastAPI, Gemini, MCP, Postgr
 
 TaskForge turns a crisis request such as "Flood in Odisha causing food shortage across 3 districts" into a structured logistics plan. The app coordinates specialist agents, records task state in PostgreSQL, exposes MCP tools over SSE, and keeps deterministic fallbacks so the demo still produces operational output when the LLM is unavailable.
 
+**Live demo:** https://taskforge-demo.mangoglacier-b3ad215d.southeastasia.azurecontainerapps.io/
+
 ## What Is In This Repo
 
 | Area | Path | What it does |
@@ -124,9 +126,9 @@ The repo includes:
 - `.github/workflows/ci.yml`
 - `.github/workflows/deploy.yml`
 
-The Cloud Run deploy workflow builds an image, deploys service `taskforge`, attaches a Cloud SQL instance, sets Gemini configuration, and verifies `/health`.
+The Azure Container Apps deploy workflow builds an image, deploys service `taskforge-demo`, enables scale-to-zero, sets demo-safe configuration, and verifies `/health`.
 
-The README intentionally does not link a live demo URL as a source of truth. Use the GitHub Actions deployment output or Cloud Run service URL after the current deployment is healthy.
+The GitHub repository homepage and the live demo link above point to the current Azure Container Apps deployment.
 
 ## Current Limitations
 
