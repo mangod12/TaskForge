@@ -34,6 +34,9 @@ class Settings(BaseSettings):
     max_agent_iterations: int = Field(default=10, description="Max tool-call loops per agent run")
     pipeline_timeout_seconds: int = Field(default=270, description="Max wall time for one pipeline run (30s before Cloud Run kills the request)")
     log_level: str = Field(default="INFO")
+    demo_mode: bool = Field(default=False, description="Run deterministic reviewer demo mode")
+    disable_database: bool = Field(default=False, description="Skip DB startup and DB-backed endpoints")
+    skip_startup_warmup: bool = Field(default=False, description="Skip preset warmup on service startup")
 
     # ── Security / CORS ───────────────────────────────────
     cors_allowed_origins: str = Field(
@@ -49,6 +52,10 @@ class Settings(BaseSettings):
     @property
     def cors_origins_list(self) -> list[str]:
         return [o.strip() for o in self.cors_allowed_origins.split(",") if o.strip()]
+
+    @property
+    def database_enabled(self) -> bool:
+        return not self.disable_database
 
     model_config = {"env_file": ".env", "env_file_encoding": "utf-8", "extra": "ignore"}
 

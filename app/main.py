@@ -105,6 +105,10 @@ async def _init_db() -> None:
 
 async def _deferred_startup() -> None:
     """DB init + seed + warmup — runs AFTER uvicorn is already accepting connections."""
+    if not settings.database_enabled:
+        logger.info("Database startup skipped because DISABLE_DATABASE=true.")
+        return
+
     # DB init (Cloud SQL proxy can take 10-30s on cold start)
     await _init_db()
 
@@ -118,9 +122,12 @@ async def _deferred_startup() -> None:
         logger.warning(f"Knowledge base seeding failed (non-fatal): {e}")
 
     # Warmup presets
-    from app.api.routes_tasks import _warmup_presets, PRESET_QUERIES
-    await _warmup_presets(PRESET_QUERIES)
-    logger.info(f"Warmup complete for {len(PRESET_QUERIES)} preset scenarios.")
+    if not settings.skip_startup_warmup:
+        from app.api.routes_tasks import _warmup_presets, PRESET_QUERIES
+        await _warmup_presets(PRESET_QUERIES)
+        logger.info(f"Warmup complete for {len(PRESET_QUERIES)} preset scenarios.")
+    else:
+        logger.info("Preset warmup skipped because SKIP_STARTUP_WARMUP=true.")
 
 
 @app.on_event("startup")
@@ -137,7 +144,7 @@ async def on_startup() -> None:
 
     logger.info(
         f"TaskForge ready | model={settings.gemini_model} | "
-        f"vertex_ai={settings.use_vertex_ai}"
+        f"vertex_ai={settings.use_vertex_ai} | demo_mode={settings.demo_mode}"
     )
 
     # ALL I/O (DB + seed + warmup) runs after port binds

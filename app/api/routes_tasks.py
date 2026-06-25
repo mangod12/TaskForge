@@ -20,6 +20,7 @@ import asyncio
 
 from fastapi import APIRouter, BackgroundTasks, HTTPException, Query
 
+from app.config import settings
 from app.db.database import async_session_factory
 from app.db.repositories import AgentLogRepository, TaskRepository
 from app.schemas.task_schemas import (
@@ -213,6 +214,9 @@ async def create_task(
     Accept a task and kick off the agent pipeline asynchronously.
     Returns 202 Accepted immediately with the task_id.
     """
+    if not settings.database_enabled:
+        raise HTTPException(status_code=503, detail="Task storage is disabled in demo mode. Use /execute.")
+
     async with async_session_factory() as session:
         repo = TaskRepository(session)
         task = await repo.create(
@@ -305,6 +309,11 @@ async def execute_task(payload: ExecuteRequest) -> ExecuteResponse:
     """Run the orchestrator pipeline. Returns cached response for preset scenarios."""
     cache_key = payload.query.strip()
 
+    if settings.demo_mode and not settings.database_enabled:
+        from app.demo_responses import build_demo_execute_response
+
+        return build_demo_execute_response(cache_key)
+
     # Return cached response if available
     if cache_key in _response_cache:
         logger.info(f"[execute] cache hit for: {cache_key[:60]}")
@@ -382,6 +391,9 @@ async def list_tasks(
     offset: int = Query(default=0, ge=0, description="Page offset"),
 ) -> TaskListResponse:
     """Return a paginated list of top-level tasks (excludes subtasks)."""
+    if not settings.database_enabled:
+        raise HTTPException(status_code=503, detail="Task storage is disabled in demo mode.")
+
     async with async_session_factory() as session:
         repo = TaskRepository(session)
         tasks = await repo.list_all(limit=limit, offset=offset)
@@ -399,6 +411,9 @@ async def list_tasks(
 )
 async def get_task(task_id: uuid.UUID) -> TaskResponse:
     """Return full task details including subtasks and structured results."""
+    if not settings.database_enabled:
+        raise HTTPException(status_code=503, detail="Task storage is disabled in demo mode.")
+
     async with async_session_factory() as session:
         repo = TaskRepository(session)
         task = await repo.get(task_id)
@@ -416,6 +431,9 @@ async def get_task(task_id: uuid.UUID) -> TaskResponse:
 )
 async def get_task_logs(task_id: uuid.UUID) -> list[AgentLogResponse]:
     """Return all agent log entries for a task, ordered chronologically."""
+    if not settings.database_enabled:
+        raise HTTPException(status_code=503, detail="Task storage is disabled in demo mode.")
+
     async with async_session_factory() as session:
         task_repo = TaskRepository(session)
         task = await task_repo.get(task_id)
@@ -435,6 +453,9 @@ async def get_task_logs(task_id: uuid.UUID) -> list[AgentLogResponse]:
 )
 async def delete_task(task_id: uuid.UUID) -> None:
     """Permanently delete a task and all its subtasks and logs (cascade)."""
+    if not settings.database_enabled:
+        raise HTTPException(status_code=503, detail="Task storage is disabled in demo mode.")
+
     async with async_session_factory() as session:
         repo = TaskRepository(session)
         task = await repo.get(task_id)

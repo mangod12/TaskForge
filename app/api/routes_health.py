@@ -10,6 +10,7 @@ import logging
 from fastapi import APIRouter
 from sqlalchemy import text
 
+from app.config import settings
 from app.schemas.task_schemas import HealthResponse
 import app.startup_state as startup_state
 
@@ -23,6 +24,9 @@ async def health_check() -> HealthResponse:
     """
     Returns the operational status of the service and the database connection.
     """
+    if settings.demo_mode and not settings.database_enabled:
+        return HealthResponse(status="healthy", database="disabled-demo-mode", version="1.0.0")
+
     from app.db.database import async_session_factory
 
     if not startup_state.startup_complete:
